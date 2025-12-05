@@ -110,22 +110,27 @@ class SVM(BaseModel, BinaryClassifierMixin):
     def _fit_linear(self, X: np.ndarray, y: np.ndarray, lambda_reg: float,
                     n_samples: int, n_features: int) -> None:
         """naive sgd untuk kernel linear"""
+        # inisialisasi weights dan bias
         self.w = np.zeros(n_features)
         self.b = 0.0
 
         if self.verbose:
             print(f"  samples: {n_samples}, will process {self.max_iter * n_samples} updates")
 
+        # training loop untuk setiap epoch
         for epoch in range(self.max_iter):
+            # shuffle data setiap epoch
             indices = np.random.permutation(n_samples)
             epoch_loss = 0.0
 
+            # update untuk setiap sample (stochastic gradient descent)
             for i in indices:
-                t = epoch * n_samples + i + 1
+                t = epoch * n_samples + i + 1  # iteration counter untuk learning rate
 
-                xi = X[i]
-                yi = y[i]
+                xi = X[i]  # ambil satu sample
+                yi = y[i]  # ambil label sample
 
+                # hitung learning rate berdasarkan strategi
                 if self.learning_rate == 'optimal':
                     eta = 1.0 / (lambda_reg * t)
                 elif self.learning_rate == 'constant':
@@ -133,22 +138,27 @@ class SVM(BaseModel, BinaryClassifierMixin):
                 else:
                     eta = self.eta0 / np.sqrt(t)
 
+                # hitung margin untuk sample ini
                 margin = yi * (np.dot(xi, self.w) + self.b)
 
-                if margin < 1:
+                # update weights berdasarkan margin
+                if margin < 1:  # jika margin kurang dari 1, ada misclassification
                     self.w = (1 - eta * lambda_reg) * self.w + eta * yi * xi
                     self.b = self.b + eta * yi
-                else:
+                else:  # margin cukup, hanya regularization
                     self.w = (1 - eta * lambda_reg) * self.w
 
+                # tambahkan hinge loss
                 epoch_loss += max(0, 1 - margin)
 
+            # print progress setiap 100 epoch
             if self.verbose and (epoch + 1) % 100 == 0:
                 avg_loss = epoch_loss / n_samples
                 margins_all = y * (np.dot(X, self.w) + self.b)
                 acc = np.mean(margins_all > 0)
                 print(f"  epoch {epoch+1}/{self.max_iter}, avg_loss: {avg_loss:.6f}, acc: {acc:.4f}")
 
+        # identifikasi support vectors (samples dengan margin <= 1)
         margins = y * (np.dot(X, self.w) + self.b)
         sv_mask = margins <= 1 + self.tol
         self.support_vectors = X[sv_mask]
@@ -159,42 +169,92 @@ class SVM(BaseModel, BinaryClassifierMixin):
 
     def _fit_kernel(self, X: np.ndarray, y: np.ndarray, lambda_reg: float, n_samples: int) -> None:
         """naive sgd untuk kernel non-linear (rbf, poly)"""
+        # inisialisasi alpha coefficients untuk setiap sample
         self.alpha = np.zeros(n_samples)
         self.support_vectors = X.copy()
         self.support_vector_labels = y.copy()
         self.b = 0.0
 
+        # precompute kernel matrix untuk efisiensi (cache)
+        # ini akan sangat mempercepat training
+        if self.verbose:
+            print("  precomputing kernel matrix...")
+        K = self._kernel_function(X, X)
+
+        # untuk kernel method, gunakan constant learning rate yang sangat kecil
+        # naive sgd untuk kernel space sangat sensitive terhadap learning rate
+        base_lr = 0.005  # learning rate yang sangat kecil untuk stability
+
+        # tracking untuk early stopping - set patience sangat tinggi
+        best_loss = float('inf')
+        patience = 0
+        max_patience = 100  # stop jika loss tidak improve selama 100 epochs
+
         for epoch in range(self.max_iter):
+            # shuffle data setiap epoch untuk stochastic gradient descent
             indices = np.random.permutation(n_samples)
             epoch_loss = 0.0
 
-            for i in indices:
-                t = epoch * n_samples + i + 1
+            for idx, i in enumerate(indices):
+                # hitung iteration counter untuk adaptive learning rate
+                t = epoch * n_samples + idx + 1
 
-                if self.learning_rate == 'optimal':
-                    eta = 1.0 / (lambda_reg * t)
-                elif self.learning_rate == 'constant':
-                    eta = self.eta0
-                else:
-                    eta = self.eta0 / np.sqrt(t)
+                # use constant learning rate untuk kernel method
+                # optimal/adaptive strategy tidak work well untuk kernel space
+                eta = base_lr
 
-                K_i = self._kernel_function(X[i:i+1], X).flatten()
-                f_i = np.dot(K_i, self.alpha * self.support_vector_labels) + self.b
+                # hitung decision function untuk sample i menggunakan kernel matrix
+                # f(x_i) = sum(alpha_j * y_j * K(x_j, x_i)) + b
+                f_i = np.dot(K[i], self.alpha * self.support_vector_labels) + self.b
+
+                # hitung margin: y_i * f(x_i)
                 margin = y[i] * f_i
 
-                self.alpha *= (1 - eta * lambda_reg)
+                # NO ALPHA DECAY - let alpha grow freely
+                # alpha decay menyebabkan alpha tidak pernah grow dengan proper
 
+                # jika margin < 1, ada hinge loss - update alpha dan bias
                 if margin < 1:
+                    # update alpha untuk sample ini
                     self.alpha[i] += eta * y[i]
-                    self.b += eta * y[i]
+                    self.b += eta * y[i] * 0.01  # update bias dengan rate yang sangat kecil
+                else:
+                    # apply minimal regularization only when margin is satisfied
+                    self.alpha *= (1.0 - lambda_reg * eta * 0.001)
 
+                # accumulate hinge loss
                 epoch_loss += max(0, 1 - margin)
 
-            if self.verbose and (epoch + 1) % 100 == 0:
-                avg_loss = epoch_loss / n_samples
-                print(f"  epoch {epoch+1}/{self.max_iter}, avg_loss: {avg_loss:.6f}")
+            # hitung average loss untuk epoch ini
+            avg_loss = epoch_loss / n_samples
 
-        sv_indices = self.alpha > self.tol
+            # hitung accuracy untuk monitoring progress
+            # print lebih sering untuk debugging (setiap 50 epochs atau milestones penting)
+            should_print = (epoch + 1) % 50 == 0 or epoch < 10 or (epoch + 1) == self.max_iter
+            if self.verbose and should_print:
+                # compute predictions untuk training set
+                K_train = K  # kernel matrix already computed
+                f_all = np.dot(K_train, self.alpha * self.support_vector_labels) + self.b
+                predictions = np.sign(f_all)
+                acc = np.mean(predictions == y)
+                print(f"  epoch {epoch+1}/{self.max_iter}, avg_loss: {avg_loss:.6f}, acc: {acc:.4f}")
+
+            # early stopping check
+            if avg_loss < best_loss - self.tol:
+                best_loss = avg_loss
+                patience = 0
+            else:
+                patience += 1
+
+            # jika loss tidak improve selama max_patience epochs, stop
+            if patience >= max_patience:
+                if self.verbose:
+                    print(f"  early stopping di epoch {epoch+1} (loss tidak improve)")
+                break
+
+        # identifikasi support vectors berdasarkan alpha values
+        # support vectors adalah samples dengan alpha > threshold
+        sv_indices = np.abs(self.alpha) > self.tol
         self.alpha = self.alpha[sv_indices]
         self.support_vectors = X[sv_indices]
         self.support_vector_labels = y[sv_indices]

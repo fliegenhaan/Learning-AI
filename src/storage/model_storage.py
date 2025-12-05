@@ -212,24 +212,22 @@ class ModelStorage:
         test_data: pd.DataFrame,
         pipeline: Any,
         filename: str = "submission.csv",
-        id_column: str = 'id'
+        id_column: str = 'Student_ID'
     ) -> pd.DataFrame:
         """Generate submission file untuk Kaggle"""
         print("\n[GENERATING SUBMISSION]")
 
-        # Extract IDs
+        # Extract IDs dari test data (simpan sebelum transform)
         if id_column in test_data.columns:
-            test_ids = test_data[id_column]
-            X_test = test_data.drop(id_column, axis=1)
+            test_ids = test_data[id_column].copy()
         else:
-            test_ids = test_data.index
-            X_test = test_data.copy()
+            test_ids = pd.Series(test_data.index)
 
-        print(f"Test data shape: {X_test.shape}")
+        print(f"Test data shape: {test_data.shape}")
 
-        # Transform test data
+        # Transform test data (pipeline akan handle drop Student_ID internally)
         print("Preprocessing test data...")
-        X_test_transformed = pipeline.transform(X_test)
+        X_test_transformed = pipeline.transform(test_data)
         print(f"Transformed shape: {X_test_transformed.shape}")
 
         # Predict

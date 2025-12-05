@@ -192,26 +192,18 @@ class MultiClassLogisticRegression(BaseModel, MulticlassClassifierMixin):
             X = X.values
         if hasattr(y, 'values'):
             y = y.values
-
         X = np.array(X)
         y = np.array(y)
-
         self._initialize_multiclass(y)
-
         if self.verbose:
             print(f"melatih {self.n_classes} binary classifiers dengan strategi One-vs-Rest")
-
         for i, cls in enumerate(self.classes):
             if self.verbose:
                 print(f"\ntraining classifier {i+1}/{self.n_classes} untuk kelas {cls}")
-
             y_binary = (y == cls).astype(int)
-
             model = self._create_classifier()
             model.fit(X, y_binary)
-
             self.models[cls] = model
-
         return self
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
@@ -219,16 +211,12 @@ class MultiClassLogisticRegression(BaseModel, MulticlassClassifierMixin):
         if hasattr(X, 'values'):
             X = X.values
         X = np.array(X)
-
         n_samples = X.shape[0]
         proba = np.zeros((n_samples, self.n_classes))
-
         for i, cls in enumerate(self.classes):
             proba[:, i] = self.models[cls].predict_proba(X)
-
         proba_sum = proba.sum(axis=1, keepdims=True)
         proba = proba / proba_sum
-
         return proba
 
     def predict(self, X: np.ndarray) -> np.ndarray:

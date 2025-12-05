@@ -14,8 +14,9 @@ Workflow:
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, precision_score, recall_score, f1_score
 import time
+from datetime import datetime
 
 # Import custom modules untuk data loading dan preprocessing
 from data import DataLoader, EDA
@@ -136,18 +137,19 @@ def load_and_prepare_data():
     print(f"  Training data shape: {X_train_final.shape}")
     print(f"  Validation data shape: {X_val_final.shape}")
 
-    return X_train_final, y_train_final, X_val_final, y_val_final, test_df, pipeline_builder
+    # return pipeline yang sudah di-fit, bukan pipeline_builder
+    return X_train_final, y_train_final, X_val_final, y_val_final, test_df, pipeline
 
 
 def train_logistic_regression(X_train, y_train, X_val, y_val):
     """
-    Train Logistic Regression model from scratch
+    train logistic regression model from scratch
 
-    Model ini menggunakan implementasi from scratch dengan:
-    - Gradient descent optimization
-    - L2 regularization untuk prevent overfitting
-    - One-vs-Rest strategy untuk multiclass classification
-    - Learning rate 0.01 dan 1000 iterations (sudah dioptimasi)
+    model ini menggunakan implementasi from scratch dengan:
+    - gradient descent optimization
+    - l2 regularization untuk prevent overfitting
+    - one-vs-rest strategy untuk multiclass classification
+    - learning rate 0.01 dan 1000 iterations (sudah dioptimasi)
     """
     from model.logres import MultiClassLogisticRegression
 
@@ -155,24 +157,24 @@ def train_logistic_regression(X_train, y_train, X_val, y_val):
 
     start_time = time.time()
 
-    # Inisialisasi model dengan hyperparameter yang sudah dioptimasi
+    # inisialisasi model dengan hyperparameter
     model = MultiClassLogisticRegression(
-        learning_rate=0.01,      # Learning rate untuk gradient descent
-        n_iterations=1000,       # Jumlah iterasi training
-        regularization='l2',     # L2 regularization (Ridge)
-        lambda_reg=0.01,         # Regularization strength
-        verbose=True             # Print progress selama training
+        learning_rate=0.01,      # learning rate untuk gradient descent
+        n_iterations=1000,       # jumlah iterasi training
+        regularization='l2',     # l2 regularization (ridge)
+        lambda_reg=0.01,         # regularization strength
+        verbose=True             # print progress selama training
     )
 
-    # Fit model pada training data
+    # fit model pada training data
     model.fit(X_train, y_train)
     train_time = time.time() - start_time
 
-    # Evaluate model performance pada validation set
+    # evaluate model performance pada validation set
     y_pred = model.predict(X_val)
     accuracy = accuracy_score(y_val, y_pred)
 
-    # Tampilkan hasil training
+    # tampilkan hasil training
     print(f"\nTraining complete ({train_time:.2f}s)")
     print(f"  Validation Accuracy: {accuracy:.4f}")
     print("\n  Classification Report:")
@@ -183,21 +185,21 @@ def train_logistic_regression(X_train, y_train, X_val, y_val):
 
 def train_svm(X_train, y_train, X_val, y_val):
     """
-    Train Support Vector Machine model from scratch
+    train support vector machine model from scratch
 
-    Model ini menggunakan implementasi PEGASOS (Primal Estimated sub-GrAdient)
-    yang jauh lebih cepat daripada dual formulation (O(N) vs O(N^3)).
-    Support multiple kernels: linear, RBF, polynomial.
-    Multiclass menggunakan One-vs-All strategy.
+    model ini menggunakan implementasi pegasos (primal estimated sub-gradient)
+    yang jauh lebih cepat daripada dual formulation (o(n) vs o(n^3)).
+    support multiple kernels: linear, rbf, polynomial.
+    multiclass menggunakan one-vs-all strategy.
     """
     from model.svm import MulticlassSVM
 
     print("\n[TRAINING] Support Vector Machine (SVM)")
 
-    # User memilih jenis kernel yang akan digunakan
-    # - Linear: Untuk data yang linearly separable
-    # - RBF: Untuk data non-linear (paling umum digunakan)
-    # - Polynomial: Untuk data dengan polynomial decision boundary
+    # user memilih jenis kernel yang akan digunakan
+    # - linear: untuk data yang linearly separable
+    # - rbf: untuk data non-linear (paling umum digunakan)
+    # - polynomial: untuk data dengan polynomial decision boundary
     print("\nPilih kernel untuk SVM:")
     print("1. Linear")
     print("2. RBF (Radial Basis Function)")
@@ -205,6 +207,7 @@ def train_svm(X_train, y_train, X_val, y_val):
 
     kernel_choice = input("\nPilihan kernel (1/2/3) [default: 2]: ").strip() or "2"
 
+    # map pilihan user ke nama kernel
     kernel_map = {
         "1": "linear",
         "2": "rbf",
@@ -215,21 +218,26 @@ def train_svm(X_train, y_train, X_val, y_val):
     print(f"\nMenggunakan kernel: {kernel}")
 
     start_time = time.time()
+    # inisialisasi multiclass svm dengan parameter
+    # untuk rbf/poly kernel, gunakan max_iter lebih tinggi untuk convergence
+    max_iterations = 1000 if kernel in ['rbf', 'poly'] else 500
     model = MulticlassSVM(
-        C=1.0,
-        kernel=kernel,
-        gamma='scale',
-        max_iter=500,
-        strategy='ova',
-        verbose=True
+        C=1.0,              # regularization parameter
+        kernel=kernel,      # jenis kernel yang dipilih
+        gamma='scale',      # kernel coefficient
+        max_iter=max_iterations,  # maksimum iterasi training (1000 untuk rbf/poly, 500 untuk linear)
+        strategy='ova',     # one-vs-all strategy
+        verbose=True        # print progress
     )
+    # train model
     model.fit(X_train, y_train)
     train_time = time.time() - start_time
 
-    # Evaluate
+    # evaluate pada validation set
     y_pred = model.predict(X_val)
     accuracy = accuracy_score(y_val, y_pred)
 
+    # tampilkan hasil
     print(f"\nTraining complete ({train_time:.2f}s)")
     print(f"  Kernel: {kernel.upper()}")
     print(f"  Validation Accuracy: {accuracy:.4f}")
@@ -240,14 +248,14 @@ def train_svm(X_train, y_train, X_val, y_val):
 
 
 def train_decision_tree(X_train, y_train, X_val, y_val):
-    """Train Decision Tree model"""
+    """train decision tree model"""
     from model.dtl import DecisionTree
 
     print("\n[TRAINING] Decision Tree")
 
-    # User memilih criterion untuk splitting
-    # - Gini: Mengukur impurity (lebih cepat, umumnya cukup baik)
-    # - Entropy: Mengukur information gain (lebih slow tapi kadang lebih akurat)
+    # user memilih criterion untuk splitting
+    # - gini: mengukur impurity (lebih cepat, umumnya cukup baik)
+    # - entropy: mengukur information gain (lebih slow tapi kadang lebih akurat)
     print("\nPilih criterion untuk Decision Tree:")
     print("1. Gini")
     print("2. Entropy")
@@ -259,40 +267,38 @@ def train_decision_tree(X_train, y_train, X_val, y_val):
 
     start_time = time.time()
 
-    # Inisialisasi Decision Tree dengan hyperparameter untuk prevent overfitting
+    # inisialisasi decision tree dengan hyperparameter untuk prevent overfitting
     model = DecisionTree(
-        min_samples_split=20,    # Minimum samples untuk split node (pruning)
-        max_depth=10,            # Maximum depth tree (pruning)
-        criterion=criterion      # Splitting criterion yang dipilih user
+        min_samples_split=20,    # minimum samples untuk split node (pruning)
+        max_depth=10,            # maximum depth tree (pruning)
+        criterion=criterion      # splitting criterion yang dipilih user
     )
 
-    # Training bisa memakan waktu karena recursive tree building
+    # training bisa memakan waktu karena recursive tree building
     print("Training Decision Tree (ini mungkin memakan waktu)...")
     model.fit(X_train, y_train)
     train_time = time.time() - start_time
 
-    # Evaluate model performance
+    # evaluate model performance
     y_pred = model.predict(X_val)
     accuracy = accuracy_score(y_val, y_pred)
 
-    # Tampilkan hasil training
+    # tampilkan hasil training
     print(f"\nTraining complete ({train_time:.2f}s)")
     print(f"  Criterion: {criterion.upper()}")
     print(f"  Validation Accuracy: {accuracy:.4f}")
     print("\n  Classification Report:")
     print(classification_report(y_val, y_pred))
 
-    # ============================================================================
-    # VISUALISASI TREE (OPSIONAL)
-    # ============================================================================
-    # User dapat memvisualisasikan struktur tree untuk memahami decision rules
-    # Visualisasi menampilkan nodes (decision rules) dan edges (True/False branches)
-    # User juga bisa membatasi kedalaman yang ditampilkan (top-N levels)
+    # visualisasi tree (opsional)
+    # user dapat memvisualisasikan struktur tree untuk memahami decision rules
+    # visualisasi menampilkan nodes (decision rules) dan edges (true/false branches)
+    # user juga bisa membatasi kedalaman yang ditampilkan (top-n levels)
     visualize = input("\nVisualisasikan struktur tree? (y/n) [default: n]: ").strip().lower() or "n"
     if visualize == 'y':
         print("\nParameter visualisasi:")
-        # max_depth_vis = top-N levels yang akan ditampilkan
-        # Berguna jika tree terlalu besar dan sulit dibaca
+        # max_depth_vis = top-n levels yang akan ditampilkan
+        # berguna jika tree terlalu besar dan sulit dibaca
         max_depth_vis = input("  Maksimal kedalaman tree yang ditampilkan (kosongkan untuk semua): ").strip()
         max_depth_vis = int(max_depth_vis) if max_depth_vis.isdigit() else None
 
@@ -308,30 +314,323 @@ def train_decision_tree(X_train, y_train, X_val, y_val):
 
 def save_model(model, model_name):
     """
-    Save trained model ke file .pkl
-
-    Model disimpan di current directory agar mudah diakses.
-    Format pickle digunakan agar bisa di-load kembali untuk prediksi.
+    save trained model ke file .pkl
+    model disimpan di current directory agar mudah diakses
+    format pickle digunakan agar bisa di-load kembali untuk prediksi
     """
     save_choice = input("\nSimpan model? (y/n) [default: y]: ").strip().lower() or "y"
 
     if save_choice == 'y':
         try:
             filename = f"{model_name.lower().replace(' ', '_')}_model"
-            # Save to current directory (not storage/)
+            # save to current directory (not storage/)
             model.save_model(filename, format='pkl', save_dir='.')
             print(f"\nModel berhasil disimpan sebagai: {filename}.pkl")
             print(f"   Lokasi: Current directory")
+            return filename
         except Exception as e:
-            print(f"\n✗ Gagal menyimpan model: {e}")
+            print(f"\n[ERROR] Gagal menyimpan model: {e}")
+            return None
     else:
         print("\nModel tidak disimpan.")
+        return None
+
+
+def save_predictions_to_csv(model, test_df, pipeline):
+    """
+    save predictions to csv file for kaggle submission
+    fungsi ini akan generate file csv berisi prediksi untuk test data
+    """
+    from storage import ModelStorage
+
+    save_csv = input("\nSimpan hasil dalam csv (y/n): ").strip().lower()
+
+    if save_csv == 'y':
+        csv_filename = input("Nama file CSV: ").strip()
+        if not csv_filename:
+            print("Nama file tidak boleh kosong!")
+            return
+
+        # tambahkan .csv extension jika belum ada
+        if not csv_filename.endswith('.csv'):
+            csv_filename += '.csv'
+
+        try:
+            # generate submission menggunakan model storage
+            submission_df = ModelStorage.generate_submission(
+                model=model,
+                test_data=test_df,
+                pipeline=pipeline,
+                filename=csv_filename,
+                id_column='Student_ID'
+            )
+            print(f"\n[OK] Prediksi berhasil disimpan ke: {csv_filename}")
+        except Exception as e:
+            print(f"\n[ERROR] Gagal menyimpan prediksi: {e}")
+
+
+def train_single_sklearn_model(model_type, X_train, y_train, X_val, y_val, kernel='rbf'):
+    """
+    train single sklearn model untuk comparison
+    """
+    from sklearn.linear_model import LogisticRegression as SklearnLogisticRegression
+    from sklearn.svm import SVC as SklearnSVM
+    from sklearn.tree import DecisionTreeClassifier as SklearnDecisionTree
+
+    print(f"\n[SKLEARN] Training {model_type}...")
+    start_time = time.time()
+
+    if model_type == 'Logistic Regression':
+        sklearn_model = SklearnLogisticRegression(
+            max_iter=1000,
+            penalty='l2',
+            C=100,
+            solver='lbfgs',
+            multi_class='ovr',
+            random_state=42
+        )
+    elif model_type == 'SVM':
+        sklearn_model = SklearnSVM(
+            C=1.0,
+            kernel=kernel,
+            gamma='scale',
+            max_iter=1000,
+            random_state=42
+        )
+    elif model_type == 'Decision Tree':
+        sklearn_model = SklearnDecisionTree(
+            min_samples_split=20,
+            max_depth=10,
+            criterion='gini',
+            random_state=42
+        )
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+
+    sklearn_model.fit(X_train, y_train)
+    train_time = time.time() - start_time
+    predictions = sklearn_model.predict(X_val)
+    accuracy = accuracy_score(y_val, predictions)
+
+    print(f"  accuracy: {accuracy:.4f}, time: {train_time:.2f}s")
+
+    return sklearn_model, accuracy, train_time, predictions
+
+
+def compare_single_model(scratch_model, scratch_pred, sklearn_model, sklearn_pred, y_val, model_name):
+    """
+    compare single model from scratch vs sklearn dan tampilkan hasil
+    """
+    print("\n" + "=" * 60)
+    print(f"COMPARISON: {model_name.upper()}")
+    print("=" * 60)
+
+    # hitung metrics untuk from scratch
+    scratch_metrics = {
+        'accuracy': accuracy_score(y_val, scratch_pred),
+        'precision': precision_score(y_val, scratch_pred, average='weighted', zero_division=0),
+        'recall': recall_score(y_val, scratch_pred, average='weighted', zero_division=0),
+        'f1': f1_score(y_val, scratch_pred, average='weighted', zero_division=0)
+    }
+
+    # hitung metrics untuk sklearn
+    sklearn_metrics = {
+        'accuracy': accuracy_score(y_val, sklearn_pred),
+        'precision': precision_score(y_val, sklearn_pred, average='weighted', zero_division=0),
+        'recall': recall_score(y_val, sklearn_pred, average='weighted', zero_division=0),
+        'f1': f1_score(y_val, sklearn_pred, average='weighted', zero_division=0)
+    }
+
+    # tampilkan comparison
+    print(f"\n{'Metric':<15} {'From Scratch':<15} {'Scikit-Learn':<15} {'Difference':<15}")
+    print("-" * 60)
+    for metric in ['accuracy', 'precision', 'recall', 'f1']:
+        scratch_val = scratch_metrics[metric]
+        sklearn_val = sklearn_metrics[metric]
+        diff = scratch_val - sklearn_val
+        print(f"{metric:<15} {scratch_val:<15.4f} {sklearn_val:<15.4f} {diff:+.4f}")
+    print("-" * 60)
+
+    # kesimpulan
+    avg_diff = abs(sum(scratch_metrics[m] - sklearn_metrics[m] for m in scratch_metrics.keys()) / len(scratch_metrics))
+    print(f"\nAverage absolute difference: {avg_diff:.4f}")
+
+    if avg_diff < 0.02:
+        print("[OK] EXCELLENT: From scratch performance sangat mendekati sklearn!")
+    elif avg_diff < 0.05:
+        print("[OK] GOOD: From scratch performance comparable dengan sklearn")
+    else:
+        print("[WARNING] GAP: Masih ada perbedaan performa yang cukup signifikan")
+
+
+def train_sklearn_models(X_train, y_train, X_val, y_val):
+    """
+    train semua model dengan sklearn untuk comparison
+    """
+    from sklearn.linear_model import LogisticRegression as SklearnLogisticRegression
+    from sklearn.svm import SVC as SklearnSVM
+    from sklearn.tree import DecisionTreeClassifier as SklearnDecisionTree
+
+    sklearn_results = {}
+
+    # train sklearn logistic regression
+    print("\n[SKLEARN] Training Logistic Regression...")
+    start_time = time.time()
+    sklearn_logres = SklearnLogisticRegression(
+        max_iter=1000,
+        penalty='l2',
+        C=100,  # c = 1/lambda_reg
+        solver='lbfgs',
+        multi_class='ovr',
+        random_state=42
+    )
+    sklearn_logres.fit(X_train, y_train)
+    logres_time = time.time() - start_time
+    logres_pred = sklearn_logres.predict(X_val)
+    logres_acc = accuracy_score(y_val, logres_pred)
+    print(f"  accuracy: {logres_acc:.4f}, time: {logres_time:.2f}s")
+
+    sklearn_results['Logistic Regression'] = {
+        'model': sklearn_logres,
+        'accuracy': logres_acc,
+        'train_time': logres_time,
+        'predictions': logres_pred
+    }
+
+    # train sklearn svm (rbf kernel)
+    print("\n[SKLEARN] Training SVM (RBF kernel)...")
+    start_time = time.time()
+    sklearn_svm = SklearnSVM(
+        C=1.0,
+        kernel='rbf',
+        gamma='scale',
+        max_iter=1000,
+        random_state=42
+    )
+    sklearn_svm.fit(X_train, y_train)
+    svm_time = time.time() - start_time
+    svm_pred = sklearn_svm.predict(X_val)
+    svm_acc = accuracy_score(y_val, svm_pred)
+    print(f"  accuracy: {svm_acc:.4f}, time: {svm_time:.2f}s")
+
+    sklearn_results['SVM'] = {
+        'model': sklearn_svm,
+        'accuracy': svm_acc,
+        'train_time': svm_time,
+        'predictions': svm_pred
+    }
+
+    # train sklearn decision tree
+    print("\n[SKLEARN] Training Decision Tree...")
+    start_time = time.time()
+    sklearn_dtl = SklearnDecisionTree(
+        min_samples_split=20,
+        max_depth=10,
+        criterion='gini',
+        random_state=42
+    )
+    sklearn_dtl.fit(X_train, y_train)
+    dtl_time = time.time() - start_time
+    dtl_pred = sklearn_dtl.predict(X_val)
+    dtl_acc = accuracy_score(y_val, dtl_pred)
+    print(f"  accuracy: {dtl_acc:.4f}, time: {dtl_time:.2f}s")
+
+    sklearn_results['Decision Tree'] = {
+        'model': sklearn_dtl,
+        'accuracy': dtl_acc,
+        'train_time': dtl_time,
+        'predictions': dtl_pred
+    }
+
+    return sklearn_results
+
+
+def generate_comparison_txt(scratch_results, sklearn_results, y_val, filename='model_comparison.txt'):
+    """
+    generate file txt berisi comparison lengkap antara from scratch vs sklearn
+    """
+    with open(filename, 'w', encoding='utf-8') as f:
+        # header
+        f.write("=" * 80 + "\n")
+        f.write(" MODEL COMPARISON: FROM SCRATCH vs SCIKIT-LEARN\n")
+        f.write("=" * 80 + "\n")
+        f.write(f"generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write("=" * 80 + "\n\n")
+
+        # summary table
+        f.write("SUMMARY - VALIDATION ACCURACY\n")
+        f.write("-" * 80 + "\n")
+        f.write(f"{'Model':<25} {'From Scratch':<15} {'Scikit-Learn':<15} {'Difference':<15}\n")
+        f.write("-" * 80 + "\n")
+
+        for model_name in scratch_results.keys():
+            scratch_acc = scratch_results[model_name]['accuracy']
+            sklearn_acc = sklearn_results[model_name]['accuracy']
+            diff = scratch_acc - sklearn_acc
+
+            f.write(f"{model_name:<25} {scratch_acc:<15.4f} {sklearn_acc:<15.4f} {diff:+.4f}\n")
+
+        f.write("-" * 80 + "\n\n")
+
+        # detailed comparison untuk setiap model
+        for model_name in scratch_results.keys():
+            f.write("\n" + "=" * 80 + "\n")
+            f.write(f" {model_name.upper()}\n")
+            f.write("=" * 80 + "\n\n")
+
+            # gunakan predictions yang sudah disimpan
+            # predictions sudah di-compute dan disimpan saat training
+            scratch_pred = scratch_results[model_name]['predictions']
+            sklearn_pred = sklearn_results[model_name]['predictions']
+
+            # hitung metrics lengkap
+            scratch_metrics = {
+                'accuracy': accuracy_score(y_val, scratch_pred),
+                'precision': precision_score(y_val, scratch_pred, average='weighted', zero_division=0),
+                'recall': recall_score(y_val, scratch_pred, average='weighted', zero_division=0),
+                'f1': f1_score(y_val, scratch_pred, average='weighted', zero_division=0)
+            }
+
+            sklearn_metrics = {
+                'accuracy': accuracy_score(y_val, sklearn_pred),
+                'precision': precision_score(y_val, sklearn_pred, average='weighted', zero_division=0),
+                'recall': recall_score(y_val, sklearn_pred, average='weighted', zero_division=0),
+                'f1': f1_score(y_val, sklearn_pred, average='weighted', zero_division=0)
+            }
+
+            f.write("FROM SCRATCH:\n")
+            f.write(f"  accuracy:  {scratch_metrics['accuracy']:.4f}\n")
+            f.write(f"  precision: {scratch_metrics['precision']:.4f}\n")
+            f.write(f"  recall:    {scratch_metrics['recall']:.4f}\n")
+            f.write(f"  f1-score:  {scratch_metrics['f1']:.4f}\n")
+            f.write(f"  time:      {scratch_results[model_name]['train_time']:.2f}s\n\n")
+
+            f.write("SCIKIT-LEARN:\n")
+            f.write(f"  accuracy:  {sklearn_metrics['accuracy']:.4f}\n")
+            f.write(f"  precision: {sklearn_metrics['precision']:.4f}\n")
+            f.write(f"  recall:    {sklearn_metrics['recall']:.4f}\n")
+            f.write(f"  f1-score:  {sklearn_metrics['f1']:.4f}\n")
+            f.write(f"  time:      {sklearn_results[model_name]['train_time']:.2f}s\n\n")
+
+            f.write("DIFFERENCE (FROM SCRATCH - SCIKIT-LEARN):\n")
+            f.write(f"  accuracy:  {scratch_metrics['accuracy'] - sklearn_metrics['accuracy']:+.4f}\n")
+            f.write(f"  precision: {scratch_metrics['precision'] - sklearn_metrics['precision']:+.4f}\n")
+            f.write(f"  recall:    {scratch_metrics['recall'] - sklearn_metrics['recall']:+.4f}\n")
+            f.write(f"  f1-score:  {scratch_metrics['f1'] - sklearn_metrics['f1']:+.4f}\n")
+            f.write(f"  time:      {scratch_results[model_name]['train_time'] - sklearn_results[model_name]['train_time']:+.2f}s\n")
+
+        # footer
+        f.write("\n" + "=" * 80 + "\n")
+        f.write(" END OF COMPARISON\n")
+        f.write("=" * 80 + "\n")
+
+    print(f"\n[OK] Comparison report berhasil disimpan ke: {filename}")
 
 
 def main():
-    """Main function dengan interactive menu"""
+    """main function dengan interactive menu"""
 
-    # Load and prepare data
+    # load and prepare data
     X_train, y_train, X_val, y_val, test_df, pipeline = load_and_prepare_data()
 
     # MODEL SELECTION MENU
@@ -347,8 +646,22 @@ def main():
     choice = input("\nPilihan Anda (1/2/3/4/5): ").strip()
 
     if choice == "1":
+        # train from scratch
         model, accuracy, train_time = train_logistic_regression(X_train, y_train, X_val, y_val)
+        scratch_pred = model.predict(X_val)
+
+        # comparison dengan sklearn
+        run_comparison = input("\nJalankan comparison dengan scikit-learn? (y/n) [default: y]: ").strip().lower() or "y"
+        if run_comparison == 'y':
+            sklearn_model, sklearn_acc, sklearn_time, sklearn_pred = train_single_sklearn_model(
+                'Logistic Regression', X_train, y_train, X_val, y_val
+            )
+            compare_single_model(model, scratch_pred, sklearn_model, sklearn_pred, y_val, 'Logistic Regression')
+
         save_model(model, "logistic_regression")
+
+        # ask if user wants to save predictions to csv
+        save_predictions_to_csv(model, test_df, pipeline)
 
         return {
             'model': model,
@@ -364,8 +677,24 @@ def main():
         }
 
     elif choice == "2":
+        # train from scratch
         model, accuracy, train_time = train_svm(X_train, y_train, X_val, y_val)
+        scratch_pred = model.predict(X_val)
+
+        # comparison dengan sklearn
+        run_comparison = input("\nJalankan comparison dengan scikit-learn? (y/n) [default: y]: ").strip().lower() or "y"
+        if run_comparison == 'y':
+            # detect kernel yang digunakan dari model scratch
+            kernel_used = model.kernel if hasattr(model, 'kernel') else 'rbf'
+            sklearn_model, sklearn_acc, sklearn_time, sklearn_pred = train_single_sklearn_model(
+                'SVM', X_train, y_train, X_val, y_val, kernel=kernel_used
+            )
+            compare_single_model(model, scratch_pred, sklearn_model, sklearn_pred, y_val, f'SVM ({kernel_used.upper()})')
+
         save_model(model, "svm")
+
+        # ask if user wants to save predictions to csv
+        save_predictions_to_csv(model, test_df, pipeline)
 
         return {
             'model': model,
@@ -381,8 +710,22 @@ def main():
         }
 
     elif choice == "3":
+        # train from scratch
         model, accuracy, train_time = train_decision_tree(X_train, y_train, X_val, y_val)
+        scratch_pred = model.predict(X_val)
+
+        # comparison dengan sklearn
+        run_comparison = input("\nJalankan comparison dengan scikit-learn? (y/n) [default: y]: ").strip().lower() or "y"
+        if run_comparison == 'y':
+            sklearn_model, sklearn_acc, sklearn_time, sklearn_pred = train_single_sklearn_model(
+                'Decision Tree', X_train, y_train, X_val, y_val
+            )
+            compare_single_model(model, scratch_pred, sklearn_model, sklearn_pred, y_val, 'Decision Tree')
+
         save_model(model, "decision_tree")
+
+        # ask if user wants to save predictions to csv
+        save_predictions_to_csv(model, test_df, pipeline)
 
         return {
             'model': model,
@@ -402,45 +745,51 @@ def main():
 
         models_results = {}
 
-        # Train all models
+        # train all models from scratch
         print("\nTraining 1/3: Logistic Regression")
         logres_model, logres_acc, logres_time = train_logistic_regression(X_train, y_train, X_val, y_val)
+        logres_pred = logres_model.predict(X_val)  # simpan predictions
         models_results['Logistic Regression'] = {
             'model': logres_model,
             'accuracy': logres_acc,
-            'train_time': logres_time
+            'train_time': logres_time,
+            'predictions': logres_pred
         }
 
-        # Train model 2: SVM dengan RBF kernel (default, umumnya perform terbaik)
-        print("\nTraining 2/3: SVM (RBF kernel)")
+        # train model 2: svm dengan linear kernel
+        # linear kernel bekerja sangat baik dengan naive sgd implementation
+        # rbf kernel butuh qp solver (cvxopt) untuk optimal solution
+        print("\nTraining 2/3: SVM (Linear kernel)")
         from model.svm import MulticlassSVM
-        svm_model = MulticlassSVM(C=1.0, kernel='rbf', gamma='scale', max_iter=500, strategy='ova', verbose=True)
+        svm_model = MulticlassSVM(C=1.0, kernel='linear', max_iter=500, strategy='ova', verbose=True)
         start_time = time.time()
         svm_model.fit(X_train, y_train)
         svm_time = time.time() - start_time
-        svm_pred = svm_model.predict(X_val)
+        svm_pred = svm_model.predict(X_val)  # simpan predictions
         svm_acc = accuracy_score(y_val, svm_pred)
         print(f"\nSVM Accuracy: {svm_acc:.4f}, Time: {svm_time:.2f}s")
         models_results['SVM'] = {
             'model': svm_model,
             'accuracy': svm_acc,
-            'train_time': svm_time
+            'train_time': svm_time,
+            'predictions': svm_pred
         }
 
-        # Train model 3: Decision Tree dengan Gini criterion (default)
+        # train model 3: decision tree dengan gini criterion (default)
         print("\nTraining 3/3: Decision Tree")
         from model.dtl import DecisionTree
         dtl_model = DecisionTree(min_samples_split=20, max_depth=10, criterion='gini')
         start_time = time.time()
         dtl_model.fit(X_train, y_train)
         dtl_time = time.time() - start_time
-        dtl_pred = dtl_model.predict(X_val)
+        dtl_pred = dtl_model.predict(X_val)  # simpan predictions
         dtl_acc = accuracy_score(y_val, dtl_pred)
         print(f"\nDecision Tree Accuracy: {dtl_acc:.4f}, Time: {dtl_time:.2f}s")
         models_results['Decision Tree'] = {
             'model': dtl_model,
             'accuracy': dtl_acc,
-            'train_time': dtl_time
+            'train_time': dtl_time,
+            'predictions': dtl_pred
         }
 
         # ========== COMPARISON RESULTS ==========
@@ -462,6 +811,20 @@ def main():
         print("-" * 40)
         print(f"\nBest: {best_model_name} ({best_accuracy:.4f})")
 
+        # ========== SAVE ALL MODELS ==========
+        # Simpan semua model yang sudah dilatih ke file .pkl
+        print("\n" + "=" * 40)
+        print("SAVING ALL MODELS")
+        print("=" * 40)
+
+        for model_name, results in models_results.items():
+            try:
+                filename = f"{model_name.lower().replace(' ', '_')}_model"
+                results['model'].save_model(filename, format='pkl', save_dir='.')
+                print(f"[OK] {model_name} disimpan sebagai: {filename}.pkl")
+            except Exception as e:
+                print(f"[ERROR] Gagal menyimpan {model_name}: {e}")
+
         # ========== VISUALISASI DECISION TREE (OPSIONAL) ==========
         # Jika Decision Tree termasuk dalam models yang dilatih,
         # tanya user apakah mau visualisasi struktur tree-nya
@@ -480,9 +843,72 @@ def main():
                 print(f"\nMembuat visualisasi tree...")
                 models_results['Decision Tree']['model'].visualize_tree(max_depth=max_depth_vis, filename=filename)
 
-        # ========== SAVE BEST MODEL ==========
-        # Simpan model terbaik untuk digunakan pada prediksi nantinya
-        save_model(models_results[best_model_name]['model'], f"best_{best_model_name}")
+        # ========== KAGGLE SUBMISSION ==========
+        # Generate submission CSV menggunakan model terbaik
+        print("\n" + "=" * 40)
+        print("KAGGLE SUBMISSION")
+        print("=" * 40)
+        print(f"\nModel terbaik untuk submit ke Kaggle: {best_model_name}")
+        print(f"  Validation Accuracy: {best_accuracy:.4f}")
+
+        generate_submission = input("\nGenerate submission file untuk Kaggle? (y/n) [default: y]: ").strip().lower() or "y"
+
+        if generate_submission == 'y':
+            from storage import ModelStorage
+
+            csv_filename = input("Nama file submission [default: submission.csv]: ").strip() or "submission.csv"
+            if not csv_filename.endswith('.csv'):
+                csv_filename += '.csv'
+
+            try:
+                # Generate submission menggunakan model terbaik
+                submission_df = ModelStorage.generate_submission(
+                    model=models_results[best_model_name]['model'],
+                    test_data=test_df,
+                    pipeline=pipeline,
+                    filename=csv_filename,
+                    id_column='Student_ID'
+                )
+                print(f"\n[OK] Submission berhasil dibuat: {csv_filename}")
+                print(f"  Ready untuk di-upload ke Kaggle!")
+            except Exception as e:
+                print(f"\n[ERROR] Gagal membuat submission: {e}")
+
+        # ========== COMPARISON FROM SCRATCH vs SKLEARN ==========
+        # train sklearn models untuk comparison
+        print("\n" + "=" * 40)
+        print("COMPARISON: FROM SCRATCH vs SKLEARN")
+        print("=" * 40)
+
+        run_comparison = input("\nJalankan comparison dengan scikit-learn? (y/n) [default: y]: ").strip().lower() or "y"
+
+        if run_comparison == 'y':
+            # train sklearn models
+            sklearn_results = train_sklearn_models(X_train, y_train, X_val, y_val)
+
+            # generate comparison txt file
+            comparison_filename = input("\nNama file output comparison [default: model_comparison.txt]: ").strip() or "model_comparison.txt"
+            if not comparison_filename.endswith('.txt'):
+                comparison_filename += '.txt'
+
+            generate_comparison_txt(models_results, sklearn_results, y_val, comparison_filename)
+
+            # tampilkan summary comparison
+            print("\n" + "=" * 40)
+            print("COMPARISON SUMMARY")
+            print("=" * 40)
+            print(f"{'Model':<25} {'From Scratch':<15} {'Scikit-Learn':<15} {'Difference':<15}")
+            print("-" * 40)
+
+            for model_name in models_results.keys():
+                scratch_acc = models_results[model_name]['accuracy']
+                sklearn_acc = sklearn_results[model_name]['accuracy']
+                diff = scratch_acc - sklearn_acc
+
+                print(f"{model_name:<25} {scratch_acc:<15.4f} {sklearn_acc:<15.4f} {diff:+.4f}")
+
+            print("-" * 40)
+            print(f"\n[OK] Comparison selesai! Lihat detail di: {comparison_filename}")
 
         return {
             'models': models_results,
